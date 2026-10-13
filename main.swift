@@ -30,6 +30,42 @@ func declined(_ e: EKEvent) -> Bool {
     e.attendees?.first { $0.isCurrentUser }?.participantStatus == .declined
 }
 
+// The app icon's stopwatch as a template, on the icon's 1024pt canvas: case ring, calendar header with binder slots, crown, pusher.
+func menuBarIcon() -> NSImage {
+    let img = NSImage(size: NSSize(width: 17, height: 18), flipped: true) { r in
+        let t = NSAffineTransform()
+        t.scale(by: r.height / 770)
+        t.translateX(by: -165, yBy: -120)
+        t.concat()
+        let face = NSBezierPath(ovalIn: NSRect(x: 240, y: 292, width: 536, height: 536))
+        let ring = NSBezierPath(ovalIn: NSRect(x: 182, y: 234, width: 652, height: 652))
+        ring.append(face)
+        ring.windingRule = .evenOdd
+        ring.fill()
+        NSBezierPath(roundedRect: NSRect(x: 416, y: 126, width: 184, height: 62), xRadius: 22, yRadius: 22).fill()
+        NSBezierPath.fill(NSRect(x: 470, y: 176, width: 76, height: 80))
+        NSGraphicsContext.saveGraphicsState()
+        let pusher = NSAffineTransform()
+        pusher.translateX(by: 508, yBy: 560)
+        pusher.rotate(byDegrees: 45)
+        pusher.translateX(by: -508, yBy: -560)
+        pusher.concat()
+        NSBezierPath.fill(NSRect(x: 480, y: 190, width: 56, height: 64))
+        NSBezierPath(roundedRect: NSRect(x: 450, y: 146, width: 116, height: 54), xRadius: 20, yRadius: 20).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        NSBezierPath.clip(NSRect(x: 0, y: 0, width: 1024, height: 462))   // header: the face above the chord
+        face.fill()
+        NSGraphicsContext.current?.compositingOperation = .clear   // binder slots, then the rings inside them
+        for x in [369.0, 605] { NSBezierPath(roundedRect: NSRect(x: x - 14, y: 266, width: 70, height: 132), xRadius: 35, yRadius: 35).fill() }
+        NSGraphicsContext.current?.compositingOperation = .sourceOver
+        for x in [369.0, 605] { NSBezierPath(roundedRect: NSRect(x: x + 6, y: 286, width: 30, height: 92), xRadius: 15, yRadius: 15).fill() }
+        return true
+    }
+    img.isTemplate = true
+    img.accessibilityDescription = "DoNotMissIt"
+    return img
+}
+
 // Borderless windows refuse key status by default; we need it for Return/Esc.
 // Non-activating panel: takes keys without needing app activation, which macOS won't grant to a timer.
 final class OverlayWindow: NSPanel {
@@ -47,7 +83,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var timers: [Timer] = []
 
     func applicationDidFinishLaunching(_ note: Notification) {
-        status.button?.image = NSImage(systemSymbolName: "calendar", accessibilityDescription: "DoNotMissIt")
+        status.button?.image = menuBarIcon()
         status.button?.imagePosition = .imageLeading
         status.menu = NSMenu()
         status.menu?.delegate = self
