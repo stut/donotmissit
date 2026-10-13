@@ -3,9 +3,7 @@
 #   pkill -x DoNotMissIt; rm -rf /Applications/DoNotMissIt.app && cp -R DoNotMissIt.app /Applications && open /Applications/DoNotMissIt.app
 set -e
 cd "$(dirname "$0")"
+xcodebuild -quiet
 rm -rf DoNotMissIt.app
-mkdir -p DoNotMissIt.app/Contents/MacOS
-swiftc -O -target arm64-apple-macos26 main.swift -o DoNotMissIt.app/Contents/MacOS/DoNotMissIt
-cp Info.plist DoNotMissIt.app/Contents/
-codesign --force --sign - DoNotMissIt.app
+cp -R build/Release/DoNotMissIt.app .
 DoNotMissIt.app/Contents/MacOS/DoNotMissIt --selftest
