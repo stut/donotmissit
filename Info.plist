@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
 	<key>CFBundleIdentifier</key>
 	<string>net.stut.donotmissit</string>
 	<key>CFBundleName</key>
@@ -18,6 +20,10 @@
 	<string>Copyright © 2026 Stuart Dallas</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>DoNotMissIt reads your calendar to show a full-screen alert when a meeting is about to start.</string>
 </dict>
