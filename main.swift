@@ -101,7 +101,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(info("CFBundleName")).font(.title3.weight(.semibold))
                         Group {
-                            Text("Version \(info("CFBundleShortVersionString")) (\(info("CFBundleVersion")))")
+                            Text("Version \(info("CFBundleShortVersionString")) Build \(info("CFBundleVersion"))")
                             Text(info("NSHumanReadableCopyright"))
                         }
                         .font(.subheadline)
