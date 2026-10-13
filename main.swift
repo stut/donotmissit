@@ -3,8 +3,15 @@ import EventKit
 
 let leadTime: TimeInterval = 60   // overlay appears this long before start
 let pollInterval: TimeInterval = 10
-let meetingHosts = ["zoom.us", "meet.google.com", "teams.microsoft.com", "teams.live.com",
-                    "webex.com", "whereby.com", "chime.aws", "gotomeeting.com", "meet.goto.com", "around.co"]
+let meetingHosts = ["zoom.us": "Zoom", "meet.google.com": "Google Meet", "teams.microsoft.com": "Teams", "teams.live.com": "Teams",
+                    "webex.com": "Webex", "whereby.com": "Whereby", "chime.aws": "Chime", "gotomeeting.com": "GoTo",
+                    "meet.goto.com": "GoTo", "around.co": "Around"]
+
+func provider(_ url: URL) -> String? { meetingHosts.first { url.host?.hasSuffix($0.key) == true }?.value }
+// h:mm:ss past an hour: menu previews can open the overlay up to 24h ahead.
+func countdown(_ s: Int) -> String { Duration.seconds(s).formatted(.time(pattern: s < 3600 ? .minuteSecond : .hourMinuteSecond)) }
+// Up to 84pt and ~0.71 of the ring's inner diameter (d - 20). Measured, as digit widths vary by locale; the slack under 3/4 covers SF's looser small-size tracking.
+func clockFont(_ text: String, _ d: CGFloat) -> NSFont { .monospacedDigitSystemFont(ofSize: min(84, 60 * (d - 20) / text.size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 84, weight: .light)]).width), weight: .light) }
 
 func meetingURL(in text: String) -> URL? {
     // Google notes arrive as HTML; NSDataDetector would glue "<br>" onto the URL.
@@ -12,7 +19,7 @@ func meetingURL(in text: String) -> URL? {
     let detector = try! NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
     return detector.matches(in: text, range: NSRange(text.startIndex..., in: text))
         .compactMap(\.url)
-        .first { url in meetingHosts.contains { url.host?.hasSuffix($0) == true } }
+        .first { provider($0) != nil }
 }
 
 func meetingURL(for e: EKEvent) -> URL? {
@@ -37,6 +44,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var overlays: [NSWindow] = []
     var overlayURL: URL?
     var overlayKey = ""
+    var timers: [Timer] = []
 
     func applicationDidFinishLaunching(_ note: Notification) {
         status.button?.image = NSImage(systemSymbolName: "calendar", accessibilityDescription: "DoNotMissIt")
@@ -64,7 +72,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let next = events.first(where: { $0.startDate > now }) {
             let left = Duration.seconds(ceil(next.startDate.timeIntervalSince(now) / 60) * 60)
                 .formatted(.units(allowed: [.hours, .minutes], width: .narrow))
-            status.button?.title = " \((next.title ?? "").prefix(25)) · \(left)"
+            status.button?.title = " \(next.title.isEmpty ? "Untitled" : next.title.prefix(25)) · \(left)"
         } else {
             status.button?.title = ""
         }
@@ -86,7 +94,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if events.isEmpty { menu.addItem(withTitle: "No meetings in the next 24h", action: nil, keyEquivalent: "") }
         for e in events.prefix(15) {
             let time = e.startDate.formatted(date: .omitted, time: .shortened)
-            let item = menu.addItem(withTitle: "\(time)  \(e.title ?? "Untitled")", action: #selector(preview), keyEquivalent: "")
+            let item = menu.addItem(withTitle: "\(time)  \(e.title.isEmpty ? "Untitled" : e.title!)", action: #selector(preview), keyEquivalent: "")
             item.target = self
             item.representedObject = e
         }
@@ -103,52 +111,154 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         overlayURL = meetingURL(for: e)
         overlayKey = key(e)
         for screen in NSScreen.screens {
-            let w = OverlayWindow(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-            w.isReleasedWhenClosed = false
-            w.level = .screenSaver
-            w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            w.appearance = NSAppearance(named: .darkAqua)
-            w.backgroundColor = NSColor.black.withAlphaComponent(0.85)
-            w.isOpaque = false
-            w.contentView = content(e, width: screen.frame.width * 0.8)
-            w.setFrame(screen.frame, display: true)
+            let w = makeOverlay(e, frame: screen.frame)
             w.orderFrontRegardless()
             overlays.append(w)
         }
         overlays.first?.makeKey()
     }
 
-    func content(_ e: EKEvent, width: CGFloat) -> NSView {
-        let title = NSTextField(wrappingLabelWithString: e.title ?? "Untitled")
-        title.font = .systemFont(ofSize: 56, weight: .bold)
-        title.alignment = .center
-        title.preferredMaxLayoutWidth = width
-        let time = NSTextField(labelWithString: [e.startDate, e.endDate]
-            .map { $0.formatted(date: .omitted, time: .shortened) }.joined(separator: " – "))
-        time.font = .systemFont(ofSize: 28)
+    func makeOverlay(_ e: EKEvent, frame: NSRect) -> NSWindow {
+        let w = OverlayWindow(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        w.isReleasedWhenClosed = false
+        w.level = .screenSaver
+        w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        w.appearance = NSAppearance(named: .darkAqua)
+        w.backgroundColor = .clear
+        w.isOpaque = false
+        let blur = NSVisualEffectView()
+        blur.material = .fullScreenUI
+        blur.state = .active
+        w.contentView = blur
+        let root = content(e, width: min(frame.width * 0.8, 1000), scale: w.backingScaleFactor)
+        root.frame = blur.bounds
+        root.autoresizingMask = [.width, .height]
+        blur.addSubview(root)
+        w.setFrame(frame, display: true)
+        return w
+    }
 
-        var buttons: [NSButton] = []
-        if overlayURL != nil {
-            let joinButton = NSButton(title: "Join", target: self, action: #selector(join))
-            joinButton.keyEquivalent = "\r"
-            buttons.append(joinButton)
+    func content(_ e: EKEvent, width: CGFloat, scale: CGFloat) -> NSView {
+        var tint = e.calendar?.color ?? .controlAccentColor
+        // Dark calendar colours (Blueberry, Grape, Graphite) sink into the card; lift them toward white.
+        if tint.usingColorSpace(.genericGamma22Gray)?.whiteComponent ?? 1 < 0.45 { tint = tint.blended(withFraction: 0.4, of: .white)! }
+        let d = min(300, width * 0.35), textWidth = max(360, width - d - 48 * 2 - 56)   // card insets and gap; 360 fits Join Google Meet + Dismiss
+        func label(_ s: String, _ size: CGFloat, _ weight: NSFont.Weight = .regular, _ color: NSColor = .secondaryLabelColor, lines: Int = 1) -> NSTextField {
+            let l = NSTextField(wrappingLabelWithString: s)
+            l.font = .systemFont(ofSize: size, weight: weight)
+            l.textColor = color
+            l.isSelectable = false   // a clicked selectable label takes first responder and swallows Return/Esc
+            l.preferredMaxLayoutWidth = textWidth
+            l.maximumNumberOfLines = lines
+            l.cell?.truncatesLastVisibleLine = true
+            l.widthAnchor.constraint(lessThanOrEqualToConstant: textWidth).isActive = true   // one-line labels report their untruncated width
+            return l
         }
-        let dismissButton = NSButton(title: "Dismiss", target: self, action: #selector(dismiss))
-        dismissButton.keyEquivalent = "\u{1b}"
-        buttons.append(dismissButton)
-        buttons.forEach { $0.controlSize = .large }
+        let clock = NSTextField(labelWithString: "")
+        let caption = label("", 17, .medium)
+        let face = NSStackView(views: [clock, caption])
+        face.orientation = .vertical
+        face.spacing = 0
 
-        let stack = NSStackView(views: [title, time, NSStackView(views: buttons)])
-        stack.orientation = .vertical
-        stack.spacing = 24
-        stack.translatesAutoresizingMaskIntoConstraints = false
+        let dial = NSView()
+        dial.wantsLayer = true
+        let glow = CAGradientLayer()
+        glow.type = .radial
+        glow.startPoint = CGPoint(x: 0.5, y: 0.5)
+        glow.endPoint = CGPoint(x: 1, y: 1)
+        glow.frame = CGRect(x: 0, y: 0, width: d, height: d)
+        // Starts at 12 o'clock and runs clockwise, so strokeEnd drains it like a clock hand.
+        let path = CGMutablePath()
+        path.addArc(center: CGPoint(x: d / 2, y: d / 2), radius: d / 2 - 6, startAngle: .pi / 2, endAngle: -1.5 * .pi, clockwise: true)
+        let track = CAShapeLayer(), arc = CAShapeLayer()
+        for l in [track, arc] {
+            l.path = path
+            l.fillColor = nil
+            l.lineWidth = 8
+            l.lineCap = .round
+        }
+        [glow, track, arc].forEach(dial.layer!.addSublayer)
+        [glow, track, arc].forEach { $0.contentsScale = scale }   // hand-added sublayers don't inherit it and render soft
+        track.strokeColor = NSColor.white.withAlphaComponent(0.1).cgColor
+        arc.shadowOffset = .zero
+        arc.shadowRadius = 14
+        arc.shadowOpacity = 1
+        dial.addSubview(face)
+        face.translatesAutoresizingMaskIntoConstraints = false
+
+        let title = label(e.title.isEmpty ? "Untitled" : e.title!, 44, .bold, .labelColor, lines: 3)
+        let loc = e.location ?? ""
+        let info = [label(e.calendar?.title ?? "", 18, .semibold, tint), title,
+                    label([e.startDate, e.endDate].map { $0.formatted(date: .omitted, time: .shortened) }.joined(separator: " – "), 22),
+                    label(URL(string: loc)?.host == nil ? loc : "", 22)]
+        info.forEach { $0.isHidden = $0.stringValue.isEmpty }   // the stack detaches hidden views, so no blank rows
+        var buttons = [pill("Dismiss", #selector(dismiss), "\u{1b}", primary: false)]
+        if let name = overlayURL.flatMap(provider) { buttons.insert(pill("Join \(name)", #selector(join), "\r", primary: true), at: 0) }
+        let footer = NSStackView(views: buttons)
+        footer.spacing = 12
+        footer.setHuggingPriority(.defaultHigh, for: .horizontal)   // else it ties with the column's hugging and its width is ambiguous
+        let column = NSStackView(views: info + [footer])
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.setCustomSpacing(14, after: title)
+        column.setCustomSpacing(32, after: info.last { !$0.isHidden }!)
+
+        let card = NSStackView(views: [column, dial])
+        card.spacing = 56
+        card.edgeInsets = NSEdgeInsets(top: 44, left: 48, bottom: 44, right: 48)
+        card.setHuggingPriority(.defaultLow - 1, for: .vertical)   // else its insets tie with the column and footer hugging (all 250) and stretch them
+        card.wantsLayer = true
+        card.layer?.backgroundColor = NSColor(white: 0.11, alpha: 0.94).cgColor
+        card.layer?.cornerRadius = 32
+        card.layer?.borderWidth = 1
+        let shadow = NSShadow()   // AppKit overwrites shadow properties set on the view's layer
+        shadow.shadowColor = .black.withAlphaComponent(0.5)
+        shadow.shadowBlurRadius = 30
+        shadow.shadowOffset = NSSize(width: 0, height: -10)
+        card.shadow = shadow
+        card.translatesAutoresizingMaskIntoConstraints = false
         let root = NSView()
-        root.addSubview(stack)
+        root.wantsLayer = true
+        root.layer?.backgroundColor = NSColor(white: 0, alpha: 0.5).cgColor
+        root.addSubview(card)
         NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: root.centerYAnchor),
+            dial.widthAnchor.constraint(equalToConstant: d), dial.heightAnchor.constraint(equalToConstant: d),
+            face.centerXAnchor.constraint(equalTo: dial.centerXAnchor), face.centerYAnchor.constraint(equalTo: dial.centerYAnchor),
+            // The card's top/bottom insets are only as strong as its hugging, so hold them here.
+            card.heightAnchor.constraint(greaterThanOrEqualTo: column.heightAnchor, constant: 88), card.heightAnchor.constraint(greaterThanOrEqualToConstant: d + 88),
+            card.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            card.centerYAnchor.constraint(equalTo: root.centerYAnchor),
         ])
+        timers.append(Timer(timeInterval: 0.25, repeats: true) { [weak clock, weak caption, weak glow, weak arc, weak card, tint, start = e.startDate!] _ in
+            let dt = start.timeIntervalSinceNow, late = dt <= 0, c = late ? NSColor.systemRed : tint
+            let text = (late ? "+" : "") + countdown(abs(Int(dt.rounded(.up))))
+            clock?.stringValue = text
+            clock?.font = clockFont(text, d)
+            clock?.textColor = late ? c : .labelColor
+            caption?.stringValue = late ? "since start" : "until start"
+            glow?.colors = [late ? 0.45 : 0.3, 0.08, 0].map { c.withAlphaComponent($0).cgColor }
+            arc?.strokeColor = c.cgColor
+            arc?.shadowColor = c.cgColor
+            arc?.strokeEnd = late ? 1 : min(1, dt / leadTime)
+            card?.layer?.borderColor = (late ? c.withAlphaComponent(0.4) : NSColor(white: 1, alpha: 0.1)).cgColor
+        })
+        RunLoop.main.add(timers.last!, forMode: .common)   // .default mode pauses while a pill is held down
+        timers.last!.fire()
         return root
+    }
+
+    // Drawn by hand: system bezels go grey on the overlays that aren't key (every screen but one).
+    func pill(_ title: String, _ action: Selector, _ key: String, primary: Bool) -> NSButton {
+        let b = NSButton(title: title, target: self, action: action)
+        b.keyEquivalent = key
+        b.isBordered = false
+        b.wantsLayer = true
+        b.layer?.cornerRadius = 26
+        b.layer?.backgroundColor = NSColor.white.withAlphaComponent(primary ? 1 : 0.12).cgColor
+        b.attributedTitle = NSAttributedString(string: title, attributes: [
+            .font: NSFont.systemFont(ofSize: 19, weight: .semibold), .foregroundColor: primary ? NSColor.black : .white])
+        NSLayoutConstraint.activate([b.widthAnchor.constraint(equalToConstant: b.intrinsicContentSize.width + 56), b.heightAnchor.constraint(equalToConstant: 52)])
+        return b
     }
 
     @objc func join() {
@@ -158,6 +268,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func dismiss() {
+        timers.forEach { $0.invalidate() }
+        timers.removeAll()
         overlays.forEach { $0.close() }
         overlays.removeAll()
     }
@@ -168,6 +280,8 @@ if CommandLine.arguments.contains("--selftest") {
     precondition(meetingURL(in: "Room 4\n<https://meet.google.com/abc-defg-hij>")?.host == "meet.google.com")
     precondition(meetingURL(in: "Join<br>https://meet.google.com/abc-defg-hij<br>x")?.path == "/abc-defg-hij")
     precondition(meetingURL(in: "https://calendar.google.com/event?eid=1 https://example.com") == nil)
+    precondition(provider(URL(string: "https://us02web.zoom.us/j/1")!) == "Zoom")
+    for t in [43, 3599, 86399].map(countdown) + ["+" + countdown(3599), "+" + countdown(360002)] { precondition(t.size(withAttributes: [.font: clockFont(t, 224)]).width <= 0.75 * 204, t) }
     print("ok")
     exit(0)
 }
