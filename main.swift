@@ -1,14 +1,20 @@
 import AppKit
 import EventKit
+import ServiceManagement
+import SwiftUI
 
-let leadTime: TimeInterval = 60   // overlay appears this long before start
+let lookAheads: KeyValuePairs = [4: "4 hours", 8: "8 hours", 12: "12 hours", 24: "24 hours", 48: "2 days", 72: "3 days",
+                                 168: "1 week", 336: "2 weeks", 720: "1 month"]
+// integer(forKey:) is 0 until the picker is first used, and defaults can be hand-edited.
+var leadTime: TimeInterval { TimeInterval(min(max(UserDefaults.standard.integer(forKey: "leadMinutes"), 1), 10) * 60) }   // overlay appears this long before start
+var lookAheadHours: Int { let h = UserDefaults.standard.integer(forKey: "lookAheadHours"); return lookAheads.contains { $0.key == h } ? h : 24 }
 let pollInterval: TimeInterval = 10
 let meetingHosts = ["zoom.us": "Zoom", "meet.google.com": "Google Meet", "teams.microsoft.com": "Teams", "teams.live.com": "Teams",
                     "webex.com": "Webex", "whereby.com": "Whereby", "chime.aws": "Chime", "gotomeeting.com": "GoTo",
                     "meet.goto.com": "GoTo", "around.co": "Around"]
 
 func provider(_ url: URL) -> String? { meetingHosts.first { url.host?.hasSuffix($0.key) == true }?.value }
-// h:mm:ss past an hour: menu previews can open the overlay up to 24h ahead.
+// h:mm:ss past an hour: menu previews can open the overlay up to a month ahead.
 func countdown(_ s: Int) -> String { Duration.seconds(s).formatted(.time(pattern: s < 3600 ? .minuteSecond : .hourMinuteSecond)) }
 // Up to 84pt and ~0.71 of the ring's inner diameter (d - 20). Measured, as digit widths vary by locale; the slack under 3/4 covers SF's looser small-size tracking.
 func clockFont(_ text: String, _ d: CGFloat) -> NSFont { .monospacedDigitSystemFont(ofSize: min(84, 60 * (d - 20) / text.size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 84, weight: .light)]).width), weight: .light) }
@@ -30,6 +36,110 @@ func declined(_ e: EKEvent) -> Bool {
     e.attendees?.first { $0.isCurrentUser }?.participantStatus == .declined
 }
 
+// The app icon's stopwatch as a template, on the icon's 1024pt canvas: case ring, calendar header with binder slots, crown, pusher.
+func menuBarIcon() -> NSImage {
+    let img = NSImage(size: NSSize(width: 17, height: 18), flipped: true) { r in
+        let t = NSAffineTransform()
+        t.scale(by: r.height / 770)
+        t.translateX(by: -165, yBy: -120)
+        t.concat()
+        let face = NSBezierPath(ovalIn: NSRect(x: 240, y: 292, width: 536, height: 536))
+        let ring = NSBezierPath(ovalIn: NSRect(x: 182, y: 234, width: 652, height: 652))
+        ring.append(face)
+        ring.windingRule = .evenOdd
+        ring.fill()
+        NSBezierPath(roundedRect: NSRect(x: 416, y: 126, width: 184, height: 62), xRadius: 22, yRadius: 22).fill()
+        NSBezierPath.fill(NSRect(x: 470, y: 176, width: 76, height: 80))
+        NSGraphicsContext.saveGraphicsState()
+        let pusher = NSAffineTransform()
+        pusher.translateX(by: 508, yBy: 560)
+        pusher.rotate(byDegrees: 45)
+        pusher.translateX(by: -508, yBy: -560)
+        pusher.concat()
+        NSBezierPath.fill(NSRect(x: 480, y: 190, width: 56, height: 64))
+        NSBezierPath(roundedRect: NSRect(x: 450, y: 146, width: 116, height: 54), xRadius: 20, yRadius: 20).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        NSBezierPath.clip(NSRect(x: 0, y: 0, width: 1024, height: 462))   // header: the face above the chord
+        face.fill()
+        NSGraphicsContext.current?.compositingOperation = .clear   // binder slots, then the rings inside them
+        for x in [369.0, 605] { NSBezierPath(roundedRect: NSRect(x: x - 14, y: 266, width: 70, height: 132), xRadius: 35, yRadius: 35).fill() }
+        NSGraphicsContext.current?.compositingOperation = .sourceOver
+        for x in [369.0, 605] { NSBezierPath(roundedRect: NSRect(x: x + 6, y: 286, width: 30, height: 92), xRadius: 15, yRadius: 15).fill() }
+        return true
+    }
+    img.isTemplate = true
+    img.accessibilityDescription = "DoNotMissIt"
+    return img
+}
+
+struct SettingsView: View {
+    @AppStorage("leadMinutes") private var leadMinutes = 1
+    @AppStorage("lookAheadHours") private var lookAheadHours = 24
+    @State private var login = SMAppService.mainApp.status == .enabled
+
+    func info(_ key: String) -> String { Bundle.main.object(forInfoDictionaryKey: key) as? String ?? "" }
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Remind me", selection: $leadMinutes) {
+                    ForEach(1...10, id: \.self) { Text("\($0) minute\($0 == 1 ? "" : "s") before") }
+                }
+                Picker("Look ahead", selection: $lookAheadHours) {
+                    ForEach(lookAheads, id: \.key) { Text($0.value) }
+                }
+                Toggle("Start at login", isOn: Binding(get: { login }, set: {
+                    try? $0 ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+                    // Previously switched off in System Settings: only the user can re-enable it there.
+                    if SMAppService.mainApp.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
+                    login = SMAppService.mainApp.status == .enabled
+                }))
+            }
+            Section {
+                HStack(spacing: 14) {
+                    Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 56, height: 56).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(info("CFBundleName")).font(.title3.weight(.semibold))
+                        Group {
+                            Text("Version \(info("CFBundleShortVersionString")) (\(info("CFBundleVersion")))")
+                            Text(info("NSHumanReadableCopyright"))
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 440)
+        .fixedSize()
+        // The login item can be flipped in System Settings while this window stays open.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            login = SMAppService.mainApp.status == .enabled
+        }
+    }
+}
+
+// No main menu (LSUIElement), so nothing else turns ⌘W into Close.
+final class SettingsWindow: NSWindow {
+    override func performKeyEquivalent(with e: NSEvent) -> Bool {
+        guard e.modifierFlags.contains(.command), e.charactersIgnoringModifiers == "w" else { return super.performKeyEquivalent(with: e) }
+        performClose(nil)
+        return true
+    }
+}
+
+func makeSettingsWindow() -> NSWindow {
+    let w = SettingsWindow(contentViewController: NSHostingController(rootView: SettingsView()))
+    w.styleMask = [.titled, .closable]
+    w.titlebarAppearsTransparent = true   // one seamless surface like System Settings, not a hairline under the title
+    w.title = "DoNotMissIt Settings"
+    w.isReleasedWhenClosed = false
+    w.setContentSize(w.contentView!.fittingSize)   // SwiftUI sizes the window lazily, which would throw off center()
+    w.center()
+    return w
+}
+
 // Borderless windows refuse key status by default; we need it for Return/Esc.
 // Non-activating panel: takes keys without needing app activation, which macOS won't grant to a timer.
 final class OverlayWindow: NSPanel {
@@ -45,13 +155,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var overlayURL: URL?
     var overlayKey = ""
     var timers: [Timer] = []
+    lazy var settings = makeSettingsWindow()
 
     func applicationDidFinishLaunching(_ note: Notification) {
-        status.button?.image = NSImage(systemSymbolName: "calendar", accessibilityDescription: "DoNotMissIt")
+        status.button?.image = menuBarIcon()
         status.button?.imagePosition = .imageLeading
         status.menu = NSMenu()
         status.menu?.delegate = self
         Timer.scheduledTimer(timeInterval: pollInterval, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
+        // Settings apply now, not on the next poll. Async: defaults change on any thread, and AppKit writes some mid-layout inside showOverlay.
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: nil) { [weak self] _ in DispatchQueue.main.async { self?.tick() } }
         Task {
             _ = try? await store.requestFullAccessToEvents()
             tick()
@@ -64,14 +177,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         let now = Date()
-        let predicate = store.predicateForEvents(withStart: now.addingTimeInterval(-300), end: now.addingTimeInterval(86400), calendars: nil)
+        let predicate = store.predicateForEvents(withStart: now.addingTimeInterval(-300), end: now.addingTimeInterval(TimeInterval(lookAheadHours) * 3600), calendars: nil)
         events = store.events(matching: predicate)
             .filter { !$0.isAllDay && $0.status != .canceled && !declined($0) && $0.endDate > now }
             .sorted { $0.startDate < $1.startDate }
 
         if let next = events.first(where: { $0.startDate > now }) {
             let left = Duration.seconds(ceil(next.startDate.timeIntervalSince(now) / 60) * 60)
-                .formatted(.units(allowed: [.hours, .minutes], width: .narrow))
+                .formatted(.units(allowed: [.days, .hours, .minutes], width: .narrow, maximumUnitCount: 2, fractionalPart: .hide(rounded: .down)))
             status.button?.title = " \(next.title.isEmpty ? "Untitled" : next.title.prefix(25)) · \(left)"
         } else {
             status.button?.title = ""
@@ -91,15 +204,26 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        if events.isEmpty { menu.addItem(withTitle: "No meetings in the next 24h", action: nil, keyEquivalent: "") }
-        for e in events.prefix(15) {
-            let time = e.startDate.formatted(date: .omitted, time: .shortened)
+        if events.isEmpty {
+            let span = lookAheads.first { $0.key == lookAheadHours }!.value
+            menu.addItem(withTitle: "Nothing scheduled in the next \(span.hasPrefix("1 ") ? String(span.dropFirst(2)) : span)", action: nil, keyEquivalent: "")
+        }
+        for e in events.prefix(10) {
+            let time = Calendar.current.isDateInToday(e.startDate) ? e.startDate.formatted(date: .omitted, time: .shortened)
+                : e.startDate.formatted(.dateTime.weekday().day().month().hour().minute())
             let item = menu.addItem(withTitle: "\(time)  \(e.title.isEmpty ? "Untitled" : e.title!)", action: #selector(preview), keyEquivalent: "")
             item.target = self
             item.representedObject = e
         }
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate), keyEquivalent: "q")
+    }
+
+    @objc func openSettings() {
+        NSApp.activate()
+        settings.orderFrontRegardless()   // activation can be refused (e.g. when run from Xcode), which would leave it behind the frontmost app
+        settings.makeKey()
     }
 
     @objc func preview(_ item: NSMenuItem) {

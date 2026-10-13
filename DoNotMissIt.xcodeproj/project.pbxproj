@@ -1,0 +1,178 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		8E0D1A0F307E519800AB3C47 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E0D1A0E307E519800AB3C47 /* main.swift */; };
+		8E0D1A12307E519800AB3C47 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8E0D1A11307E519800AB3C47 /* AppIcon.icon */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		8E0D1A04307E519800AB3C47 /* DoNotMissIt.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DoNotMissIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8E0D1A0E307E519800AB3C47 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		8E0D1A10307E519800AB3C47 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		8E0D1A11307E519800AB3C47 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		8E0D1A01307E519800AB3C47 = {
+			isa = PBXGroup;
+			children = (
+				8E0D1A0E307E519800AB3C47 /* main.swift */,
+				8E0D1A10307E519800AB3C47 /* Info.plist */,
+				8E0D1A11307E519800AB3C47 /* AppIcon.icon */,
+				8E0D1A03307E519800AB3C47 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8E0D1A03307E519800AB3C47 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8E0D1A04307E519800AB3C47 /* DoNotMissIt.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		8E0D1A05307E519800AB3C47 /* DoNotMissIt */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8E0D1A0B307E519800AB3C47 /* Build configuration list for PBXNativeTarget "DoNotMissIt" */;
+			buildPhases = (
+				8E0D1A06307E519800AB3C47 /* Sources */,
+				8E0D1A07307E519800AB3C47 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DoNotMissIt;
+			productName = DoNotMissIt;
+			productReference = 8E0D1A04307E519800AB3C47 /* DoNotMissIt.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8E0D1A02307E519800AB3C47 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+			};
+			buildConfigurationList = 8E0D1A08307E519800AB3C47 /* Build configuration list for PBXProject "DoNotMissIt" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 8E0D1A01307E519800AB3C47;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 8E0D1A03307E519800AB3C47 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8E0D1A05307E519800AB3C47 /* DoNotMissIt */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		8E0D1A07307E519800AB3C47 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8E0D1A12307E519800AB3C47 /* AppIcon.icon in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8E0D1A06307E519800AB3C47 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8E0D1A0F307E519800AB3C47 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		8E0D1A09307E519800AB3C47 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = macosx;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		8E0D1A0A307E519800AB3C47 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		8E0D1A0C307E519800AB3C47 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				PRODUCT_BUNDLE_IDENTIFIER = net.stut.donotmissit;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		8E0D1A0D307E519800AB3C47 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				PRODUCT_BUNDLE_IDENTIFIER = net.stut.donotmissit;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		8E0D1A08307E519800AB3C47 /* Build configuration list for PBXProject "DoNotMissIt" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8E0D1A09307E519800AB3C47 /* Debug */,
+				8E0D1A0A307E519800AB3C47 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8E0D1A0B307E519800AB3C47 /* Build configuration list for PBXNativeTarget "DoNotMissIt" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8E0D1A0C307E519800AB3C47 /* Debug */,
+				8E0D1A0D307E519800AB3C47 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 8E0D1A02307E519800AB3C47 /* Project object */;
+}
