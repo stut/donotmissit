@@ -36,6 +36,15 @@ func declined(_ e: EKEvent) -> Bool {
     e.attendees?.first { $0.isCurrentUser }?.participantStatus == .declined
 }
 
+// Title, not identifier: the same meeting in two calendars has two identifiers but should alert once.
+func key(_ e: EKEvent) -> String { "\(e.title ?? "")@\(e.startDate.timeIntervalSince1970)" }
+
+// e and everything starting with it, e first, for one shared overlay. e leads even if a poll has since dropped it from events.
+func together(_ e: EKEvent, in events: [EKEvent]) -> [EKEvent] {
+    var seen = Set<String>()
+    return ([e] + events).filter { $0.startDate == e.startDate && seen.insert(key($0)).inserted }
+}
+
 // The app icon's stopwatch as a template, on the icon's 1024pt canvas: case ring, calendar header with binder slots, crown, pusher.
 func menuBarIcon() -> NSImage {
     let img = NSImage(size: NSSize(width: 17, height: 18), flipped: true) { r in
@@ -152,8 +161,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var events: [EKEvent] = []
     var alerted = Set<String>()
     var overlays: [NSWindow] = []
-    var overlayURL: URL?
-    var overlayKey = ""
+    var overlayEvents: [EKEvent] = []
     var timers: [Timer] = []
     lazy var settings = makeSettingsWindow()
 
@@ -195,12 +203,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let dt = $0.startDate.timeIntervalSince(now)
             return dt <= leadTime && dt > -300 && !alerted.contains(key($0))
         }) else { return }
-        alerted.insert(key(due))
-        showOverlay(due)
+        let group = together(due, in: events).filter { !alerted.contains(key($0)) }
+        group.forEach { alerted.insert(key($0)) }
+        showOverlay(group)
     }
-
-    // Title, not identifier: the same meeting in two calendars has two identifiers but should alert once.
-    func key(_ e: EKEvent) -> String { "\(e.title ?? "")@\(e.startDate.timeIntervalSince1970)" }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
@@ -227,22 +233,21 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func preview(_ item: NSMenuItem) {
-        if let e = item.representedObject as? EKEvent { showOverlay(e) }
+        if let e = item.representedObject as? EKEvent { showOverlay(together(e, in: events)) }
     }
 
-    func showOverlay(_ e: EKEvent) {
+    func showOverlay(_ es: [EKEvent]) {
         dismiss()
-        overlayURL = meetingURL(for: e)
-        overlayKey = key(e)
+        overlayEvents = es
         for screen in NSScreen.screens {
-            let w = makeOverlay(e, frame: screen.frame)
+            let w = makeOverlay(es, frame: screen.frame)
             w.orderFrontRegardless()
             overlays.append(w)
         }
         overlays.first?.makeKey()
     }
 
-    func makeOverlay(_ e: EKEvent, frame: NSRect) -> NSWindow {
+    func makeOverlay(_ es: [EKEvent], frame: NSRect) -> NSWindow {
         let w = OverlayWindow(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         w.isReleasedWhenClosed = false
         w.level = .screenSaver
@@ -254,7 +259,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         blur.material = .fullScreenUI
         blur.state = .active
         w.contentView = blur
-        let root = content(e, width: min(frame.width * 0.8, 1000), scale: w.backingScaleFactor)
+        let root = content(es, width: min(frame.width * 0.8, 1000), scale: w.backingScaleFactor)
         root.frame = blur.bounds
         root.autoresizingMask = [.width, .height]
         blur.addSubview(root)
@@ -262,7 +267,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return w
     }
 
-    func content(_ e: EKEvent, width: CGFloat, scale: CGFloat) -> NSView {
+    func content(_ es: [EKEvent], width: CGFloat, scale: CGFloat) -> NSView {
+        let e = es[0]
         var tint = e.calendar?.color ?? .controlAccentColor
         // Dark calendar colours (Blueberry, Grape, Graphite) sink into the card; lift them toward white.
         if tint.usingColorSpace(.genericGamma22Gray)?.whiteComponent ?? 1 < 0.45 { tint = tint.blended(withFraction: 0.4, of: .white)! }
@@ -310,22 +316,59 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         dial.addSubview(face)
         face.translatesAutoresizingMaskIntoConstraints = false
 
-        let title = label(e.title.isEmpty ? "Untitled" : e.title!, 44, .bold, .labelColor, lines: 3)
-        let loc = e.location ?? ""
-        let info = [label(e.calendar?.title ?? "", 18, .semibold, tint), title,
-                    label([e.startDate, e.endDate].map { $0.formatted(date: .omitted, time: .shortened) }.joined(separator: " – "), 22),
-                    label(URL(string: loc)?.host == nil ? loc : "", 22)]
-        info.forEach { $0.isHidden = $0.stringValue.isEmpty }   // the stack detaches hidden views, so no blank rows
-        var buttons = [pill("Dismiss", #selector(dismiss), "\u{1b}", primary: false)]
-        if let name = overlayURL.flatMap(provider) { buttons.insert(pill("Join \(name)", #selector(join), "\r", primary: true), at: 0) }
-        let footer = NSStackView(views: buttons)
-        footer.spacing = 12
-        footer.setHuggingPriority(.defaultHigh, for: .horizontal)   // else it ties with the column's hugging and its width is ambiguous
-        let column = NSStackView(views: info + [footer])
+        func when(_ e: EKEvent) -> String { [e.startDate, e.endDate].map { $0.formatted(date: .omitted, time: .shortened) }.joined(separator: " – ") }
+        func place(_ e: EKEvent) -> String { let loc = e.location ?? ""; return URL(string: loc)?.host == nil ? loc : "" }
+        var returnTaken = false   // Return joins the first event with a link
+        func joinPill(_ i: Int, small: Bool = false) -> NSButton? {
+            guard let name = meetingURL(for: es[i]).flatMap(provider) else { return nil }
+            defer { returnTaken = true }
+            let b = pill("Join \(name)", #selector(join), returnTaken ? "" : "\r", primary: true, small: small)
+            b.tag = i
+            return b
+        }
+        let dismissPill = pill("Dismiss", #selector(dismiss), "\u{1b}", primary: false)
+        let column = NSStackView()
+        if es.count == 1 {
+            let title = label(e.title.isEmpty ? "Untitled" : e.title!, 44, .bold, .labelColor, lines: 3)
+            let info = [label(e.calendar?.title ?? "", 18, .semibold, tint), title, label(when(e), 22), label(place(e), 22)]
+            info.forEach { $0.isHidden = $0.stringValue.isEmpty }   // the stack detaches hidden views, so no blank rows
+            let footer = NSStackView(views: [joinPill(0), dismissPill].compactMap { $0 })
+            footer.spacing = 12
+            footer.setHuggingPriority(.defaultHigh, for: .horizontal)   // else it ties with the column's hugging and its width is ambiguous
+            column.setViews(info + [footer], in: .top)
+            column.setCustomSpacing(14, after: title)
+            column.setCustomSpacing(32, after: info.last { !$0.isHidden }!)
+        } else {
+            // One line per event, its Join pinned right; dividers between.
+            var rows: [NSView] = [label("\(es.count) events at \(e.startDate.formatted(date: .omitted, time: .shortened))", 18, .semibold, tint)]
+            for (i, e) in es.enumerated() {
+                if i > 0 {
+                    let rule = NSView()
+                    rule.wantsLayer = true
+                    rule.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.1).cgColor
+                    rule.heightAnchor.constraint(equalToConstant: 1).isActive = true
+                    rows.append(rule)
+                }
+                let text = NSStackView(views: [label(e.title.isEmpty ? "Untitled" : e.title!, 26, .bold, .labelColor),
+                                               label([e.calendar?.title ?? "", when(e), place(e)].filter { !$0.isEmpty }.joined(separator: " · "), 17)])
+                text.orientation = .vertical
+                text.alignment = .leading
+                text.spacing = 4
+                text.setContentHuggingPriority(.defaultLow, for: .horizontal)
+                let row = NSStackView()
+                row.setViews([text], in: .leading)
+                row.setViews([joinPill(i, small: true)].compactMap { $0 }, in: .trailing)
+                row.spacing = 16
+                rows.append(row)
+            }
+            rows.dropFirst().forEach { $0.widthAnchor.constraint(equalToConstant: textWidth).isActive = true }
+            column.setViews(rows + [dismissPill], in: .top)
+            column.spacing = 18
+            column.setCustomSpacing(22, after: rows[0])
+            column.setCustomSpacing(32, after: rows.last!)
+        }
         column.orientation = .vertical
         column.alignment = .leading
-        column.setCustomSpacing(14, after: title)
-        column.setCustomSpacing(32, after: info.last { !$0.isHidden }!)
 
         let card = NSStackView(views: [column, dial])
         card.spacing = 56
@@ -372,22 +415,24 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // Drawn by hand: system bezels go grey on the overlays that aren't key (every screen but one).
-    func pill(_ title: String, _ action: Selector, _ key: String, primary: Bool) -> NSButton {
+    func pill(_ title: String, _ action: Selector, _ key: String, primary: Bool, small: Bool = false) -> NSButton {
         let b = NSButton(title: title, target: self, action: action)
         b.keyEquivalent = key
         b.isBordered = false
         b.wantsLayer = true
-        b.layer?.cornerRadius = 26
+        b.layer?.cornerRadius = small ? 20 : 26
         b.layer?.backgroundColor = NSColor.white.withAlphaComponent(primary ? 1 : 0.12).cgColor
         b.attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.systemFont(ofSize: 19, weight: .semibold), .foregroundColor: primary ? NSColor.black : .white])
-        NSLayoutConstraint.activate([b.widthAnchor.constraint(equalToConstant: b.intrinsicContentSize.width + 56), b.heightAnchor.constraint(equalToConstant: 52)])
+            .font: NSFont.systemFont(ofSize: small ? 16 : 19, weight: .semibold), .foregroundColor: primary ? NSColor.black : .white])
+        NSLayoutConstraint.activate([b.widthAnchor.constraint(equalToConstant: b.intrinsicContentSize.width + (small ? 40 : 56)),
+                                     b.heightAnchor.constraint(equalToConstant: small ? 40 : 52)])
         return b
     }
 
-    @objc func join() {
-        alerted.insert(overlayKey)   // joined early from the menu: don't alert again at start time
-        if let url = overlayURL { NSWorkspace.shared.open(url) }
+    @objc func join(_ b: NSButton) {
+        let e = overlayEvents[b.tag]
+        alerted.insert(key(e))   // joined early from the menu: don't alert again at start time
+        if let url = meetingURL(for: e) { NSWorkspace.shared.open(url) }
         dismiss()
     }
 
@@ -406,6 +451,9 @@ if CommandLine.arguments.contains("--selftest") {
     precondition(meetingURL(in: "https://calendar.google.com/event?eid=1 https://example.com") == nil)
     precondition(provider(URL(string: "https://us02web.zoom.us/j/1")!) == "Zoom")
     for t in [43, 3599, 86399].map(countdown) + ["+" + countdown(3599), "+" + countdown(360002)] { precondition(t.size(withAttributes: [.font: clockFont(t, 224)]).width <= 0.75 * 204, t) }
+    let s = EKEventStore(), t = Date()
+    let evs = [("A", t), ("B", t), ("A", t), ("C", t + 60)].map { let e = EKEvent(eventStore: s); (e.title, e.startDate) = $0; return e }
+    precondition(together(evs[1], in: evs).map(\.title) == ["B", "A"])
     print("ok")
     exit(0)
 }
