@@ -6,7 +6,7 @@ A macOS menu bar app that makes meetings impossible to miss. Shortly before each
 - Shows your next meeting and the time until it starts in the menu bar. Click to view upcoming meetings, and select one to preview its alert.
 - Skips all-day, cancelled and declined events, and only alerts once for a meeting that appears in two calendars.
 - Alerts on wake if the meeting started within the last 5 minutes while your Mac was asleep.
-- Settings: alert 1 to 10 minutes before, look ahead for upcoming meetings from 4 hours to a month, option to start at login.
+- Settings: alert at the time of the event or 1 to 10 minutes before, look ahead for upcoming meetings from 4 hours to a month, option to start at login.
 
 It reads the calendars on your Mac, so iCloud, Google, Exchange and any other account added in System Settings all work. Requires macOS 26.
 

@@ -5,8 +5,8 @@ import SwiftUI
 
 let lookAheads: KeyValuePairs = [4: "4 hours", 8: "8 hours", 12: "12 hours", 24: "24 hours", 48: "2 days", 72: "3 days",
                                  168: "1 week", 336: "2 weeks", 720: "1 month"]
-// integer(forKey:) is 0 until the picker is first used, and defaults can be hand-edited.
-var leadTime: TimeInterval { TimeInterval(min(max(UserDefaults.standard.integer(forKey: "leadMinutes"), 1), 10) * 60) }   // overlay appears this long before start
+// integer(forKey:) is 0 until the picker is first used, and defaults can be hand-edited. 0 minutes is a real choice, so read leadMinutes as an optional.
+var leadTime: TimeInterval { TimeInterval(min(max(UserDefaults.standard.object(forKey: "leadMinutes") as? Int ?? 1, 0), 10) * 60) }   // overlay appears this long before start
 var lookAheadHours: Int { let h = UserDefaults.standard.integer(forKey: "lookAheadHours"); return lookAheads.contains { $0.key == h } ? h : 24 }
 let pollInterval: TimeInterval = 10
 let meetingHosts = ["zoom.us": "Zoom", "meet.google.com": "Google Meet", "teams.microsoft.com": "Teams", "teams.live.com": "Teams",
@@ -92,6 +92,7 @@ struct SettingsView: View {
         Form {
             Section {
                 Picker("Remind me", selection: $leadMinutes) {
+                    Text("At time of event").tag(0)
                     ForEach(1...10, id: \.self) { Text("\($0) minute\($0 == 1 ? "" : "s") before") }
                 }
                 Picker("Look ahead", selection: $lookAheadHours) {
@@ -200,9 +201,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         // Window opens 5 min in the past so a meeting that started while asleep still alerts on wake.
+        // At least one poll ahead, so "at time of event" shows just before the start rather than up to a poll late.
         guard overlays.isEmpty, let due = events.first(where: {
             let dt = $0.startDate.timeIntervalSince(now)
-            return dt <= leadTime && dt > -300 && !alerted.contains(key($0))
+            return dt <= max(leadTime, pollInterval) && dt > -300 && !alerted.contains(key($0))
         }) else { return }
         let group = together(due, in: events).filter { !alerted.contains(key($0)) }
         group.forEach { alerted.insert(key($0)) }
