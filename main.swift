@@ -144,6 +144,7 @@ func makeSettingsWindow() -> NSWindow {
     w.titlebarAppearsTransparent = true   // one seamless surface like System Settings, not a hairline under the title
     w.title = "DoNotMissIt Settings"
     w.isReleasedWhenClosed = false
+    w.collectionBehavior = .moveToActiveSpace   // else it reopens on the Space it was first shown on, which may since have been closed
     w.setContentSize(w.contentView!.fittingSize)   // SwiftUI sizes the window lazily, which would throw off center()
     w.center()
     return w
