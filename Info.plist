@@ -25,6 +25,6 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>DoNotMissIt reads your calendar to show a full-screen alert when a meeting is about to start.</string>
+	<string>DoNotMissIt reads your calendar to show a full-screen alert when a meeting is about to start. It never changes your events, and they never leave your Mac.</string>
 </dict>
 </plist>
