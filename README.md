@@ -12,7 +12,7 @@ It reads the calendars on your Mac, so iCloud, Google, Exchange and any other ac
 
 ## Install
 
-The app has been submitted to the App Store, and the URL will be added once it's accepted.
+[Download DoNotMissIt on the Mac App Store](https://apps.apple.com/app/donotmissit/id6822468104).
 
 ## Building
 
