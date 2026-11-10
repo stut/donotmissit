@@ -173,6 +173,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         status.menu = NSMenu()
         status.menu?.delegate = self
         Timer.scheduledTimer(timeInterval: pollInterval, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
+        // Without this, a meeting moved on the server keeps its old time until macOS next pulls the account, every 15+ minutes for Google.
+        // macOS throttles refresh requests to one per account per 5 minutes; asking every minute gets a pull about every 6.
+        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [store] _ in
+            if EKEventStore.authorizationStatus(for: .event) == .fullAccess { store.refreshSourcesIfNecessary() }
+        }
         // Settings apply now, not on the next poll. Async: defaults change on any thread, and AppKit writes some mid-layout inside showOverlay.
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: nil) { [weak self] _ in DispatchQueue.main.async { self?.tick() } }
         Task {
