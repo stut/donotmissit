@@ -84,6 +84,7 @@ func menuBarIcon() -> NSImage {
 struct SettingsView: View {
     @AppStorage("leadMinutes") private var leadMinutes = 1
     @AppStorage("lookAheadHours") private var lookAheadHours = 24
+    @AppStorage("menuBarText") private var menuBarText = "meeting"
     @State private var login = SMAppService.mainApp.status == .enabled
 
     func info(_ key: String) -> String { Bundle.main.object(forInfoDictionaryKey: key) as? String ?? "" }
@@ -97,6 +98,11 @@ struct SettingsView: View {
                 }
                 Picker("Look ahead", selection: $lookAheadHours) {
                     ForEach(lookAheads, id: \.key) { Text($0.value) }
+                }
+                Picker("Menu bar shows", selection: $menuBarText) {
+                    Text("Next meeting and time").tag("meeting")
+                    Text("Time until next meeting").tag("time")
+                    Text("Icon only").tag("none")
                 }
                 Toggle("Start at login", isOn: Binding(get: { login }, set: {
                     try? $0 ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
@@ -192,10 +198,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .filter { !$0.isAllDay && $0.status != .canceled && !declined($0) && $0.endDate > now }
             .sorted { $0.startDate < $1.startDate }
 
-        if let next = events.first(where: { $0.startDate > now }) {
+        let text = UserDefaults.standard.string(forKey: "menuBarText")
+        if text != "none", let next = events.first(where: { $0.startDate > now }) {
             let left = Duration.seconds(ceil(next.startDate.timeIntervalSince(now) / 60) * 60)
                 .formatted(.units(allowed: [.days, .hours, .minutes], width: .narrow, maximumUnitCount: 2, fractionalPart: .hide(rounded: .down)))
-            status.button?.title = " \(next.title.isEmpty ? "Untitled" : next.title.prefix(25)) · \(left)"
+            status.button?.title = text == "time" ? " \(left)" : " \(next.title.isEmpty ? "Untitled" : next.title.prefix(25)) · \(left)"
         } else {
             status.button?.title = ""
         }
