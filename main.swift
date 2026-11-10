@@ -225,8 +225,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item.representedObject = e
         }
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Open Calendar", action: #selector(openCalendar), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate), keyEquivalent: "q")
+    }
+
+    // The webcal: handler is whichever app is set as Calendar's "Default calendar app". Calendar always claims webcal:, so there is one.
+    @objc func openCalendar() {
+        if let app = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "webcal:")!) { NSWorkspace.shared.openApplication(at: app, configuration: .init()) }
     }
 
     @objc func openSettings() {
